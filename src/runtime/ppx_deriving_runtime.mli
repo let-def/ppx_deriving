@@ -42,7 +42,7 @@ type bytes = Predef._bytes
 
 (** {2 Predefined modules}
     {3 Operations on predefined types} *)
-
+open Stdlib
 module Pervasives : (module type of Pervasives with
   type fpclass = Pervasives.fpclass and
   type in_channel = Pervasives.in_channel and
@@ -92,7 +92,7 @@ module Weak : (module type of Weak with
 module Buffer : (module type of Buffer with
   type t = Buffer.t)
 module Result : sig
-  type ('a, 'b) result = ('a, 'b) Result.result =
+  type nonrec ('a, 'b) result = ('a, 'b) result =
     | Ok of 'a
     | Error of 'b
 end

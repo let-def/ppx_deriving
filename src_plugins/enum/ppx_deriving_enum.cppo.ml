@@ -2,6 +2,14 @@
 #define Pcstr_tuple(core_types) core_types
 #endif
 
+#if OCAML_VERSION >= (4, 08, 0)
+#define prj_field(field) (field).prf_attributes, (field).prf_desc
+#define PRtag(label, attrs, empty, types) attrs, Rtag (label, empty, types)
+#else
+#define prj_field(field) (), (field)
+#define PRtag(label, attrs, empty, types) (), Rtag (label, attrs, empty, types)
+#endif
+
 open Longident
 open Location
 open Asttypes
@@ -42,16 +50,16 @@ let mappings_of_type type_decl =
       `Polymorphic,
       List.fold_left (fun (acc, mappings) row_field ->
           (* TODO: use row_field location instead of ptyp_loc when fixed in Parsetree *)
-          match row_field with
-          | Rinherit _ ->
+          match prj_field(row_field) with
+          | _, Rinherit _ ->
             raise_errorf ~loc:ptyp_loc
                          "%s cannot be derived for inherited variant cases" deriver
-          | Rtag (name, attrs, true, []) ->
+          | PRtag(name, attrs, true, []) ->
 #if OCAML_VERSION < (4, 06, 0)
             let name = mkloc name ptyp_loc in
 #endif
             map acc mappings attrs name
-          | Rtag _ ->
+          | PRtag(_, _, _, _) ->
             raise_errorf ~loc:ptyp_loc
                          "%s can be derived only for argumentless constructors" deriver)
         (0, []) constrs
@@ -62,7 +70,7 @@ let mappings_of_type type_decl =
     match mappings with
     | (a, { txt=atxt; loc=aloc }) :: (b, { txt=btxt; loc=bloc }) :: _ when a = b ->
       let sigil = match kind with `Regular -> "" | `Polymorphic -> "`" in
-      let sub = [Location.errorf ~loc:bloc "Same as for %s%s" sigil btxt] in
+      let sub = [Location.msg ~loc:bloc "Same as for %s%s" sigil btxt] in
       raise_errorf ~sub ~loc:aloc
                    "%s: duplicate value %d for constructor %s%s" deriver a sigil atxt
     | _ :: rest -> check_dup rest

@@ -2,6 +2,14 @@
 #define Pcstr_tuple(core_types) core_types
 #endif
 
+#if OCAML_VERSION >= (4, 08, 0)
+#define prj_field(field) (field).prf_desc
+#define PRtag(label, empty, types) Rtag (label, empty, types)
+#else
+#define prj_field(field) (field)
+#define PRtag(label, empty, types) Rtag (label, _, empty, types)
+#endif
+
 open Longident
 open Location
 open Asttypes
@@ -67,10 +75,10 @@ let rec expr_of_typ typ =
           Pat.variant label.txt popt
 #endif
         in
-        match field with
-        | Rtag (label, _, true (*empty*), []) ->
+        match prj_field(field) with
+        | PRtag(label, true (*empty*), []) ->
           Exp.case (variant label None) [%expr ()]
-        | Rtag (label, _, false, [typ]) ->
+        | PRtag(label, false, [typ]) ->
           Exp.case (variant label (Some [%pat? x]))
                    [%expr [%e expr_of_typ typ] x]
         | Rinherit ({ ptyp_desc = Ptyp_constr (tname, _) } as typ) ->

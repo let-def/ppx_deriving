@@ -32,6 +32,7 @@ type int64 = Predef._int64
 type 'a lazy_t = 'a Predef._lazy_t
 type bytes = Predef._bytes
 
+open Stdlib
 module Pervasives = Pervasives
 module Char = Char
 module String = String
@@ -54,6 +55,10 @@ module Weak = Weak
 module Printf = Printf
 module Format = Format
 module Buffer = Buffer
-module Result = Result
+module Result = struct
+  type nonrec ('a, 'b) result = ('a, 'b) result =
+    | Ok of 'a
+    | Error of 'b
+end
 
 include Pervasives

@@ -129,6 +129,16 @@ and expr_of_typ quoter typ =
       [%expr fun [%p ptuple (pattn `lhs typs)] [%p ptuple (pattn `rhs typs)] ->
         [%e exprn quoter typs |> reduce_compare]]
     | { ptyp_desc = Ptyp_variant (fields, _, _); ptyp_loc } ->
+
+
+#if OCAML_VERSION >= (4, 08, 0)
+#define prj_field(field) (field).prf_desc
+#define DISAPPEARING_FIELD
+#else
+#define prj_field(field) (field)
+#define DISAPPEARING_FIELD _,
+#endif
+
       let variant label popt =
 #if OCAML_VERSION < (4, 06, 0)
         Pat.variant label popt
@@ -139,10 +149,10 @@ and expr_of_typ quoter typ =
       let cases =
         fields |> List.map (fun field ->
           let pdup f = ptuple [f "lhs"; f "rhs"] in
-          match field with
-          | Rtag (label, _, true (*empty*), []) ->
+          match prj_field(field) with
+          | Rtag (label, DISAPPEARING_FIELD true (*empty*), []) ->
             Exp.case (pdup (fun _ -> variant label None)) [%expr 0]
-          | Rtag (label, _, false, [typ]) ->
+          | Rtag (label, DISAPPEARING_FIELD false, [typ]) ->
             Exp.case (pdup (fun var -> variant label (Some (pvar var))))
                      (app (expr_of_typ typ) [evar "lhs"; evar "rhs"])
           | Rinherit ({ ptyp_desc = Ptyp_constr (tname, _) } as typ) ->
@@ -154,10 +164,10 @@ and expr_of_typ quoter typ =
       in
       let int_cases =
         fields |> List.mapi (fun i field ->
-          match field with
-          | Rtag (label, _, true (*empty*), []) ->
+          match prj_field(field) with
+          | Rtag (label, DISAPPEARING_FIELD true (*empty*), []) ->
             Exp.case (variant label None) (int i)
-          | Rtag (label, _, false, [typ]) ->
+          | Rtag (label, DISAPPEARING_FIELD false, [typ]) ->
             Exp.case (variant label (Some [%pat? _])) (int i)
           | Rinherit { ptyp_desc = Ptyp_constr (tname, []) } ->
             Exp.case (Pat.type_ tname) (int i)

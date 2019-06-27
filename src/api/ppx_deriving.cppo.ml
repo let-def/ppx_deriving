@@ -72,7 +72,7 @@ let lookup name =
 
 let raise_errorf ?sub ?if_highlight ?loc message =
   message |> Printf.kprintf (fun str ->
-    let err = Location.error ?sub ?if_highlight ?loc str in
+    let err = Location.error ?sub ?loc str in
     raise (Location.Error err))
 
 let create =
@@ -163,20 +163,21 @@ module Arg = struct
   let get_attr ~deriver conv attr =
     match attr with
     | None -> None
-    | Some ({ txt = name }, PStr [{ pstr_desc = Pstr_eval (expr, []) }]) ->
+    | Some { Parsetree. attr_name = { txt = name };
+             attr_payload = PStr [{ pstr_desc = Pstr_eval (expr, []) }]; _ } ->
       begin match conv expr with
       | Ok v -> Some v
       | Error desc ->
         raise_errorf ~loc:expr.pexp_loc "%s: invalid [@%s]: %s expected" deriver name desc
       end
-    | Some ({ txt = name; loc }, _) ->
+    | Some { attr_name = { txt = name; loc }; _} ->
       raise_errorf ~loc "%s: invalid [@%s]: value expected" deriver name
 
   let get_flag ~deriver attr =
     match attr with
     | None -> false
-    | Some ({ txt = name }, PStr []) -> true
-    | Some ({ txt = name; loc }, _) ->
+    | Some { attr_name = { txt = name }; attr_payload = PStr []; _} -> true
+    | Some { attr_name = { txt = name; loc }; _} ->
       raise_errorf ~loc "%s: invalid [@%s]: empty structure expected" deriver name
 
   let get_expr ~deriver conv expr =
@@ -188,7 +189,7 @@ end
 let attr_warning expr =
   let loc = !default_loc in
   let structure = {pstr_desc = Pstr_eval (expr, []); pstr_loc = loc} in
-  {txt = "ocaml.warning"; loc}, PStr [structure]
+  Attr.mk {txt = "ocaml.warning"; loc} (PStr [structure])
 
 type quoter = {
   mutable next_id : int;
@@ -207,7 +208,8 @@ let sanitize ?(module_=Lident "Ppx_deriving_runtime") ?(quoter=create_quoter ())
   let body =
     Exp.open_
       ~attrs:[attr_warning [%expr "-A"]]
-      Override { txt=module_; loc=(!Ast_helper.default_loc) } expr in
+      (Opn.mk ~override:Override
+        (Mod.ident { txt=module_; loc=(!Ast_helper.default_loc) })) expr in
   match quoter.bindings with
   | [] -> body
   | bindings -> Exp.let_ Nonrecursive bindings body
@@ -252,7 +254,7 @@ let attr ~deriver name attrs =
       String.sub str 0 (String.length prefix) = prefix
   in
   let try_prefix prefix f =
-    if List.exists (fun ({ txt }, _) -> starts txt prefix) attrs
+    if List.exists (fun attr -> starts attr.attr_name.txt prefix) attrs
     then prefix ^ name
     else f ()
   in
@@ -261,11 +263,12 @@ let attr ~deriver name attrs =
       try_prefix (deriver^".") (fun () ->
         name))
   in
-  try Some (List.find (fun ({ txt }, _) -> txt = name) attrs)
+  try Some (List.find (fun attr -> attr.attr_name.txt = name) attrs)
   with Not_found -> None
 
 let attr_nobuiltin ~deriver attrs =
   attrs |> attr ~deriver "nobuiltin" |> Arg.get_flag ~deriver
+
 let rec remove_pervasive_lid = function
   | Lident _ as lid -> lid
   | Ldot (Lident "Pervasives", s) -> Lident s
@@ -327,6 +330,14 @@ let fold_right_type_decl fn { ptype_params } accum =
 let fold_right_type_ext fn { ptyext_params } accum =
   fold_right_type_params fn ptyext_params accum
 
+#if OCAML_VERSION >= (4, 08, 0)
+#define PRtag(label, empty, types) { Parsetree. prf_desc = Rtag (label, empty, types) ; _ }
+#define PRinherit(t) { Parsetree. prf_desc = Rinherit(t); _ }
+#else
+#define PRtag(label, empty, types) Rtag (label, attrs, empty, types)
+#define PRinherit(t) Rinherit(t)
+#endif
+
 let free_vars_in_core_type typ =
   let rec free_in typ =
     match typ with
@@ -351,8 +362,8 @@ let free_vars_in_core_type typ =
       List.filter (fun y -> not (List.mem y bound)) (free_in x)
     | { ptyp_desc = Ptyp_variant (rows, _, _) } ->
       List.map (
-          function Rtag (_,_,_,ts) -> List.map free_in ts
-                 | Rinherit t -> [free_in t]
+          function PRtag(_,_,ts) -> List.map free_in ts
+                 | PRinherit(t) -> [free_in t]
         ) rows |> List.concat |> List.concat
     | _ -> assert false
   in
